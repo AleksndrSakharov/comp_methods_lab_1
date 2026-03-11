@@ -15,6 +15,8 @@ namespace {
 using State = std::vector<double>;
 using Derivative = std::function<State(double, const State&)>;
 
+constexpr double kRungeKuttaOrder = 4.0;
+
 struct Rk4StepOutput {
     State yNext;
 };
@@ -80,9 +82,12 @@ State vecDiff(const State& a, const State& b) {
 }
 
 double estimateOLP(const State& yH, const State& yH2) {
-    const double p = 4.0;
-    const double k = 1.0 / (std::pow(2.0, p) - 1.0);
-    return k * maxAbsDiff(yH2, yH);
+    const double factor = 1.0 / (std::pow(2.0, kRungeKuttaOrder) - 1.0);
+    return factor * maxAbsDiff(yH2, yH);
+}
+
+double doublingThreshold(double eps) {
+    return eps / std::pow(2.0, kRungeKuttaOrder + 1.0);
 }
 
 double initialLambdaForVariant(int variant) {
@@ -215,52 +220,76 @@ IntegrationResult integrateGeneric(const IntegrationContext& context, const Stat
     result.summary.maxH = std::numeric_limits<double>::lowest();
     result.summary.minH = std::numeric_limits<double>::max();
 
+    StepRow initialRow;
+    initialRow.i = 0;
+    initialRow.x = settings.x0;
+    initialRow.v = y0;
+    initialRow.v2 = y0;
+    initialRow.delta = State(y0.size(), 0.0);
+    initialRow.olp = 0.0;
+    initialRow.h = 0.0;
+    initialRow.c1 = 0;
+    initialRow.c2 = 0;
+
+    if (context.hasExact) {
+        initialRow.uExact = context.exact(settings.x0);
+        initialRow.absExactError = std::abs(initialRow.uExact - initialRow.v[0]);
+        result.summary.maxAbsExactError = initialRow.absExactError;
+        result.summary.xAtMaxAbsExactError = settings.x0;
+    }
+
+    result.rows.push_back(initialRow);
+
     int acceptedSteps = 0;
     for (int iter = 0; iter < settings.nmax; ++iter) {
         if (x >= settings.b) {
             break;
         }
-        h = trimToBoundary(x, h, settings.b);
         if (h <= 0.0) {
             break;
         }
+        h = trimToBoundary(x, h, settings.b);
 
         int c1 = 0;
         int c2 = 0;
         State yH;
         State yH2;
         double olp = 0.0;
+        double stepUsed = h;
+        double nextH = h;
 
         if (!settings.adaptive) {
-            yH = rk4Step(context.f, x, y, h).yNext;
-            const State half1 = rk4Step(context.f, x, y, h / 2.0).yNext;
-            yH2 = rk4Step(context.f, x + h / 2.0, half1, h / 2.0).yNext;
+            yH = rk4Step(context.f, x, y, stepUsed).yNext;
+            const State half1 = rk4Step(context.f, x, y, stepUsed / 2.0).yNext;
+            yH2 = rk4Step(context.f, x + stepUsed / 2.0, half1, stepUsed / 2.0).yNext;
             olp = estimateOLP(yH, yH2);
         } else {
             while (true) {
-                yH = rk4Step(context.f, x, y, h).yNext;
-                const State half1 = rk4Step(context.f, x, y, h / 2.0).yNext;
-                yH2 = rk4Step(context.f, x + h / 2.0, half1, h / 2.0).yNext;
+                stepUsed = h;
+                yH = rk4Step(context.f, x, y, stepUsed).yNext;
+                const State half1 = rk4Step(context.f, x, y, stepUsed / 2.0).yNext;
+                yH2 = rk4Step(context.f, x + stepUsed / 2.0, half1, stepUsed / 2.0).yNext;
                 olp = estimateOLP(yH, yH2);
 
-                if (olp > settings.eps && h > 1e-12) {
-                    h /= 2.0;
+                if (olp > settings.eps && stepUsed > 1e-12) {
+                    h = trimToBoundary(x, stepUsed / 2.0, settings.b);
                     ++c1;
                     ++c1Total;
-                    h = trimToBoundary(x, h, settings.b);
                     continue;
                 }
-                if (olp < settings.eps / 16.0 && x + 2.0 * h <= settings.b) {
+
+                nextH = stepUsed;
+                if (olp < doublingThreshold(settings.eps) && x + 2.0 * stepUsed <= settings.b) {
                     ++c2;
                     ++c2Total;
-                    h *= 2.0;
+                    nextH = 2.0 * stepUsed;
                 }
                 break;
             }
         }
 
-        const double xNext = x + h;
-        const State yNext = settings.adaptive ? yH2 : yH;
+        const double xNext = x + stepUsed;
+        const State yNext = yH;
         const State delta = vecDiff(yH, yH2);
 
         StepRow row;
@@ -270,7 +299,7 @@ IntegrationResult integrateGeneric(const IntegrationContext& context, const Stat
         row.v2 = yH2;
         row.delta = delta;
         row.olp = olp;
-        row.h = h;
+        row.h = stepUsed;
         row.c1 = c1;
         row.c2 = c2;
 
@@ -286,17 +315,18 @@ IntegrationResult integrateGeneric(const IntegrationContext& context, const Stat
         result.rows.push_back(row);
 
         result.summary.maxAbsOLP = std::max(result.summary.maxAbsOLP, std::abs(olp));
-        if (h > result.summary.maxH) {
-            result.summary.maxH = h;
-            result.summary.xAtMaxH = x;
+        if (stepUsed > result.summary.maxH) {
+            result.summary.maxH = stepUsed;
+            result.summary.xAtMaxH = xNext;
         }
-        if (h < result.summary.minH) {
-            result.summary.minH = h;
-            result.summary.xAtMinH = x;
+        if (stepUsed < result.summary.minH) {
+            result.summary.minH = stepUsed;
+            result.summary.xAtMinH = xNext;
         }
 
         x = xNext;
         y = yNext;
+        h = nextH;
         ++acceptedSteps;
     }
 

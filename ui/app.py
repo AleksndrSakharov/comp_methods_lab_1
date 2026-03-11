@@ -286,6 +286,8 @@ class LabUI(tk.Tk):
         self.input_path_var = tk.StringVar(value=str(self.default_input))
         self.output_dir_var = tk.StringVar(value=str(self.default_output))
         self.solver_path_var = tk.StringVar(value=str(self._default_solver_path()))
+        self._init_parameter_vars()
+        self._load_input_file(self.default_input, show_message=False)
 
         # State for table toggle
         self.current_table_mode = "test"  # 'test' or 'main'
@@ -315,6 +317,7 @@ class LabUI(tk.Tk):
         
         # Labels inside cards
         style.configure("Field.TLabel", font=("Segoe UI", 9, "bold"), background=bg_card, foreground="#374151")
+        style.configure("Card.TCheckbutton", background=bg_card, foreground=text_primary)
         
         # Entries
         style.configure(
@@ -368,6 +371,225 @@ class LabUI(tk.Tk):
                 return candidate
         return None
 
+    def _default_input_payload(self) -> dict:
+        return {
+            "x0": 0.0,
+            "b": 5.0,
+            "h0": 0.01,
+            "eps": 1e-5,
+            "nmax": 100000,
+            "adaptive": True,
+            "variant": 25,
+            "test_u0": 1.0,
+            "m": 0.01,
+            "c": 0.15,
+            "k": 2.0,
+            "kStar": 2.0,
+            "u0": 10.0,
+            "du0": 0.0,
+            "kStarValues": [0.0, 1.0, 2.0, 3.0],
+            "cValues": [0.0, 0.05, 0.15, 0.3],
+        }
+
+    def _init_parameter_vars(self) -> None:
+        self.x0_var = tk.StringVar()
+        self.b_var = tk.StringVar()
+        self.h0_var = tk.StringVar()
+        self.eps_var = tk.StringVar()
+        self.nmax_var = tk.StringVar()
+        self.adaptive_var = tk.BooleanVar(value=True)
+
+        self.variant_var = tk.StringVar()
+        self.test_u0_var = tk.StringVar()
+
+        self.mass_var = tk.StringVar()
+        self.c_var = tk.StringVar()
+        self.k_var = tk.StringVar()
+        self.k_star_var = tk.StringVar()
+        self.main_u0_var = tk.StringVar()
+        self.du0_var = tk.StringVar()
+
+        self.k_star_values_var = tk.StringVar()
+        self.c_values_var = tk.StringVar()
+
+    def _set_form_values(self, data: dict) -> None:
+        payload = self._default_input_payload()
+        payload.update(data)
+
+        self.x0_var.set(str(payload["x0"]))
+        self.b_var.set(str(payload["b"]))
+        self.h0_var.set(str(payload["h0"]))
+        self.eps_var.set(str(payload["eps"]))
+        self.nmax_var.set(str(payload["nmax"]))
+        self.adaptive_var.set(bool(payload["adaptive"]))
+
+        self.variant_var.set(str(payload["variant"]))
+        self.test_u0_var.set(str(payload["test_u0"]))
+
+        self.mass_var.set(str(payload["m"]))
+        self.c_var.set(str(payload["c"]))
+        self.k_var.set(str(payload["k"]))
+        self.k_star_var.set(str(payload["kStar"]))
+        self.main_u0_var.set(str(payload["u0"]))
+        self.du0_var.set(str(payload["du0"]))
+
+        self.k_star_values_var.set(", ".join(str(value) for value in payload["kStarValues"]))
+        self.c_values_var.set(", ".join(str(value) for value in payload["cValues"]))
+
+    def _load_input_file(self, path: Path, show_message: bool = True) -> None:
+        if not path.exists():
+            if show_message:
+                messagebox.showerror("Ошибка", f"Не найден JSON: {path}")
+            return
+
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as ex:
+            if show_message:
+                messagebox.showerror("Ошибка чтения", f"Не удалось загрузить JSON:\n{ex}")
+            return
+
+        self.input_path_var.set(str(path))
+        self._set_form_values(data)
+
+        if show_message:
+            messagebox.showinfo("Загружено", f"Параметры загружены из:\n{path}")
+
+    @staticmethod
+    def _parse_float(value: str, field_name: str) -> float:
+        text = value.strip().replace(",", ".")
+        if not text:
+            raise ValueError(f"Поле '{field_name}' должно быть заполнено.")
+        try:
+            return float(text)
+        except ValueError as ex:
+            raise ValueError(f"Поле '{field_name}' должно быть числом.") from ex
+
+    @staticmethod
+    def _parse_int(value: str, field_name: str) -> int:
+        text = value.strip()
+        if not text:
+            raise ValueError(f"Поле '{field_name}' должно быть заполнено.")
+        try:
+            return int(text)
+        except ValueError as ex:
+            raise ValueError(f"Поле '{field_name}' должно быть целым числом.") from ex
+
+    def _parse_series(self, value: str, field_name: str, fallback: list[float]) -> list[float]:
+        normalized = value.replace(";", ",")
+        parts = [part.strip() for part in normalized.split(",") if part.strip()]
+        if not parts:
+            return fallback
+
+        result = []
+        for part in parts:
+            result.append(self._parse_float(part, field_name))
+        return result
+
+    def _build_input_payload(self) -> dict:
+        x0 = self._parse_float(self.x0_var.get(), "x0")
+        b = self._parse_float(self.b_var.get(), "b")
+        h0 = self._parse_float(self.h0_var.get(), "h0")
+        eps = self._parse_float(self.eps_var.get(), "eps")
+        nmax = self._parse_int(self.nmax_var.get(), "nmax")
+
+        variant = self._parse_int(self.variant_var.get(), "variant")
+        test_u0 = self._parse_float(self.test_u0_var.get(), "u0 тестовой задачи")
+
+        mass = self._parse_float(self.mass_var.get(), "m")
+        damping = self._parse_float(self.c_var.get(), "c")
+        stiffness = self._parse_float(self.k_var.get(), "k")
+        stiffness_star = self._parse_float(self.k_star_var.get(), "k*")
+        main_u0 = self._parse_float(self.main_u0_var.get(), "u0 основной задачи")
+        du0 = self._parse_float(self.du0_var.get(), "u'0")
+
+        if b <= x0:
+            raise ValueError("Правая граница b должна быть больше x0.")
+        if h0 <= 0.0:
+            raise ValueError("Начальный шаг h0 должен быть положительным.")
+        if eps <= 0.0:
+            raise ValueError("Параметр eps должен быть положительным.")
+        if nmax <= 0:
+            raise ValueError("Максимальное число шагов nmax должно быть положительным.")
+        if mass <= 0.0:
+            raise ValueError("Параметр m должен быть положительным.")
+
+        return {
+            "x0": x0,
+            "b": b,
+            "h0": h0,
+            "eps": eps,
+            "nmax": nmax,
+            "adaptive": self.adaptive_var.get(),
+            "variant": variant,
+            "test_u0": test_u0,
+            "m": mass,
+            "c": damping,
+            "k": stiffness,
+            "kStar": stiffness_star,
+            "u0": main_u0,
+            "du0": du0,
+            "kStarValues": self._parse_series(self.k_star_values_var.get(), "Серия k*", [stiffness_star]),
+            "cValues": self._parse_series(self.c_values_var.get(), "Серия c", [damping]),
+        }
+
+    def _create_parameter_field(self, parent, label: str, variable: tk.Variable) -> ttk.Frame:
+        frame = ttk.Frame(parent, style="Card.TFrame")
+        ttk.Label(frame, text=label, style="Field.TLabel").pack(anchor="w", pady=(0, 4))
+        ttk.Entry(frame, textvariable=variable, font=("Segoe UI", 9)).pack(fill=tk.X)
+        return frame
+
+    def _create_parameter_row(self, parent, left_label: str, left_var: tk.Variable, right_label: str | None = None, right_var: tk.Variable | None = None) -> None:
+        row = ttk.Frame(parent, style="Card.TFrame")
+        row.pack(fill=tk.X, pady=(0, 8))
+
+        left = self._create_parameter_field(row, left_label, left_var)
+        left.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
+
+        if right_label is not None and right_var is not None:
+            right = self._create_parameter_field(row, right_label, right_var)
+            right.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
+
+    def _create_section_title(self, parent, text: str, top_pad: int = 12) -> None:
+        ttk.Label(parent, text=text, style="Field.TLabel", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(top_pad, 8))
+
+    def _bind_mousewheel_scroll(self, widget: tk.Widget, canvas: tk.Canvas) -> None:
+        def on_mousewheel(event) -> None:
+            canvas.yview_scroll(int(-event.delta / 120), "units")
+
+        def bind_scroll(_event) -> None:
+            canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+        def unbind_scroll(_event) -> None:
+            canvas.unbind_all("<MouseWheel>")
+
+        widget.bind("<Enter>", bind_scroll)
+        widget.bind("<Leave>", unbind_scroll)
+
+    def _build_parameter_form(self, parent) -> None:
+        self._create_section_title(parent, "Параметры интегрирования", top_pad=4)
+        self._create_parameter_row(parent, "x0", self.x0_var, "b", self.b_var)
+        self._create_parameter_row(parent, "h0", self.h0_var, "eps", self.eps_var)
+
+        row = ttk.Frame(parent, style="Card.TFrame")
+        row.pack(fill=tk.X, pady=(0, 8))
+        nmax_field = self._create_parameter_field(row, "nmax", self.nmax_var)
+        nmax_field.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
+
+        adaptive_frame = ttk.Frame(row, style="Card.TFrame")
+        adaptive_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
+        ttk.Label(adaptive_frame, text="Адаптивный шаг", style="Field.TLabel").pack(anchor="w", pady=(0, 4))
+        ttk.Checkbutton(adaptive_frame, text="Использовать контроль локальной погрешности", variable=self.adaptive_var, style="Card.TCheckbutton").pack(anchor="w")
+
+        self._create_section_title(parent, "Тестовая задача")
+        self._create_parameter_row(parent, "Вариант", self.variant_var, "u0", self.test_u0_var)
+
+        self._create_section_title(parent, "Основная задача")
+        self._create_parameter_row(parent, "m", self.mass_var, "c", self.c_var)
+        self._create_parameter_row(parent, "k", self.k_var, "k*", self.k_star_var)
+        self._create_parameter_row(parent, "u0", self.main_u0_var, "u'0", self.du0_var)
+
     def _build_ui(self) -> None:
         # Main shell with padding
         shell = ttk.Frame(self)
@@ -416,20 +638,46 @@ class LabUI(tk.Tk):
         self._build_table_card(right_col)
 
     def _build_config_card(self, parent):
-        card = RoundedFrame(parent, bg_color="#ffffff", corner_radius=16, padding=20, height=280)
+        card = RoundedFrame(parent, bg_color="#ffffff", corner_radius=16, padding=20, autoresize=False, height=600)
         card.pack(fill=tk.X)
         
         inner = card.inner_frame
         
-        ttk.Label(inner, text="Конфигурация", style="Field.TLabel", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 16))
+        ttk.Label(inner, text="Конфигурация и ввод", style="Field.TLabel", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 16))
 
-        self._create_input_field(inner, "Solver Executable", self.solver_path_var, self.pick_solver)
-        self._create_input_field(inner, "Input JSON", self.input_path_var, self.pick_input)
-        self._create_input_field(inner, "Output Directory", self.output_dir_var, self.pick_output)
+        scroll_outer = ttk.Frame(inner, style="Card.TFrame")
+        scroll_outer.pack(fill=tk.BOTH, expand=True)
+
+        scroll_canvas = tk.Canvas(scroll_outer, highlightthickness=0, borderwidth=0, background="#ffffff")
+        scroll_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        scroll_bar = CustomScrollbar(scroll_outer, width=12, bg_color="#ffffff", thumb_color="#d1d5db", thumb_hover_color="#9ca3af")
+        scroll_bar.pack(side=tk.RIGHT, fill=tk.Y, pady=2)
+        scroll_bar.command = scroll_canvas.yview
+        scroll_canvas.configure(yscrollcommand=scroll_bar.set)
+
+        form_inner = ttk.Frame(scroll_canvas, style="Card.TFrame")
+        form_window = scroll_canvas.create_window(0, 0, window=form_inner, anchor="nw")
+
+        def update_scroll_region(_event) -> None:
+            scroll_canvas.configure(scrollregion=scroll_canvas.bbox("all"))
+
+        def update_inner_width(event) -> None:
+            scroll_canvas.itemconfigure(form_window, width=event.width)
+
+        form_inner.bind("<Configure>", update_scroll_region)
+        scroll_canvas.bind("<Configure>", update_inner_width)
+        self._bind_mousewheel_scroll(scroll_canvas, scroll_canvas)
+        self._bind_mousewheel_scroll(form_inner, scroll_canvas)
+
+        self._create_input_field(form_inner, "Solver Executable", self.solver_path_var, self.pick_solver)
+        self._create_input_field(form_inner, "JSON шаблон", self.input_path_var, self.pick_input)
+        self._create_input_field(form_inner, "Output Directory", self.output_dir_var, self.pick_output)
+        self._build_parameter_form(form_inner)
         
         # Run Button
         btn_frame = ttk.Frame(inner, style="Card.TFrame")
-        btn_frame.pack(fill=tk.X, pady=(12, 0))
+        btn_frame.pack(fill=tk.X, pady=(16, 0))
         RoundedButton(btn_frame, text="Запустить расчёт", command=self.run_solver, width=280, bg_color="#3b82f6", hover_color="#2563eb").pack(fill=tk.X)
 
     def _create_input_field(self, parent, label, var, cmd):
@@ -464,29 +712,34 @@ class LabUI(tk.Tk):
 
         RoundedButton(btn_grid, text="Фазовый портрет", command=self.plot_phase, 
                       bg_color="#e5e7eb", fg_color="#1f2937", hover_color="#d1d5db", width=280).pack(fill=tk.X, pady=(0, 10))
-                      
-        RoundedButton(btn_grid, text="Эксперименты k*, c", command=self.plot_experiments, 
-                      bg_color="#e5e7eb", fg_color="#1f2937", hover_color="#d1d5db", width=280).pack(fill=tk.X)
 
     def _build_summary_card(self, parent):
-        card = RoundedFrame(parent, bg_color="#ffffff", corner_radius=16, padding=20, height=180)
+        card = RoundedFrame(parent, bg_color="#ffffff", corner_radius=16, padding=20, height=260)
         card.pack(fill=tk.X)
         
         inner = card.inner_frame
         ttk.Label(inner, text="Сводка результатов", style="Field.TLabel", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 8))
-        
+
+        container = ttk.Frame(inner, style="Card.TFrame")
+        container.pack(fill=tk.BOTH, expand=True)
+
+        summary_scrollbar = CustomScrollbar(container, width=12, bg_color="#ffffff", thumb_color="#d1d5db", thumb_hover_color="#9ca3af")
+        summary_scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=2)
+
         self.summary_box = tk.Text(
-            inner,
-            height=6,
+            container,
+            height=10,
             wrap=tk.WORD,
             bd=0,
             padx=0,
             pady=0,
             font=("Consolas", 9),
             background="#ffffff",
-            foreground="#374151"
+            foreground="#374151",
+            yscrollcommand=summary_scrollbar.set
         )
-        self.summary_box.pack(fill=tk.BOTH, expand=True)
+        self.summary_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        summary_scrollbar.command = self.summary_box.yview
 
     def _build_table_card(self, parent):
         card = RoundedFrame(parent, bg_color="#ffffff", corner_radius=16, padding=20, autoresize=False)
@@ -619,7 +872,7 @@ class LabUI(tk.Tk):
     def pick_input(self) -> None:
         path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
         if path:
-            self.input_path_var.set(path)
+            self._load_input_file(Path(path))
 
     def pick_output(self) -> None:
         path = filedialog.askdirectory()
@@ -638,7 +891,6 @@ class LabUI(tk.Tk):
 
     def run_solver(self) -> None:
         solver = self._try_resolve_solver()
-        input_json = Path(self.input_path_var.get())
         output_dir = Path(self.output_dir_var.get())
 
         if solver is None or not solver.exists():
@@ -650,11 +902,22 @@ class LabUI(tk.Tk):
                 f"Проверены пути:\n{tried}",
             )
             return
-        if not input_json.exists():
-            messagebox.showerror("Ошибка", f"Не найден input JSON: {input_json}")
+        try:
+            payload = self._build_input_payload()
+        except ValueError as ex:
+            messagebox.showerror("Ошибка ввода", str(ex))
             return
 
         output_dir.mkdir(parents=True, exist_ok=True)
+        input_json = output_dir / "_ui_runtime_input.json"
+
+        try:
+            with input_json.open("w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+        except Exception as ex:
+            messagebox.showerror("Ошибка", f"Не удалось создать входной JSON:\n{ex}")
+            return
+
         cmd = [str(solver), str(input_json), str(output_dir)]
         try:
             # Use specific encoding for Windows console if possible, but utf-8 is generally safer for JSON
@@ -788,21 +1051,25 @@ class LabUI(tk.Tk):
 
         lines.append("Тестовая задача:")
         lines.append(f"n = {test_s['n']}, b - xn = {test_s['bMinusXn']:.6e}")
-        lines.append(f"max|ОЛП| = {test_s['maxAbsOLP']:.6e}")
-        lines.append(f"делений = {test_s['totalDivisions']}, удвоений = {test_s['totalDoublings']}")
+        lines.append(f"max |ОЛП| = {test_s['maxAbsOLP']:.6e}")
+        lines.append(f"Общее число делений h = {test_s['totalDivisions']}")
+        lines.append(f"Общее число удвоений h = {test_s['totalDoublings']}")
         lines.append(f"max h = {test_s['maxH']:.6e} при x = {test_s['xAtMaxH']:.6f}")
         lines.append(f"min h = {test_s['minH']:.6e} при x = {test_s['xAtMinH']:.6f}")
-        lines.append(f"max|ui-vi| = {test_s['maxAbsExactError']:.6e} при x = {test_s['xAtMaxAbsExactError']:.6f}")
+        lines.append(f"max |ui-vi| = {test_s['maxAbsExactError']:.6e} при x = {test_s['xAtMaxAbsExactError']:.6f}")
         lines.append("")
         lines.append("Основная задача:")
         lines.append(f"n = {main_s['n']}, b - xn = {main_s['bMinusXn']:.6e}")
-        lines.append(f"max|ОЛП| = {main_s['maxAbsOLP']:.6e}")
-        lines.append(f"делений = {main_s['totalDivisions']}, удвоений = {main_s['totalDoublings']}")
+        lines.append(f"max |ОЛП| = {main_s['maxAbsOLP']:.6e}")
+        lines.append(f"Общее число делений h = {main_s['totalDivisions']}")
+        lines.append(f"Общее число удвоений h = {main_s['totalDoublings']}")
         lines.append(f"max h = {main_s['maxH']:.6e} при x = {main_s['xAtMaxH']:.6f}")
         lines.append(f"min h = {main_s['minH']:.6e} при x = {main_s['xAtMinH']:.6f}")
 
+        self.summary_box.configure(state=tk.NORMAL)
         self.summary_box.delete("1.0", tk.END)
         self.summary_box.insert(tk.END, "\n".join(lines))
+        self.summary_box.configure(state=tk.DISABLED)
 
     def fill_test_table(self) -> None:
         self._fill_current_table()
@@ -814,8 +1081,8 @@ class LabUI(tk.Tk):
         ui = [r["uExact"] for r in data]
 
         fig, ax = plt.subplots(num="Тестовая задача", figsize=(9.5, 5.8))
-        ax.plot(x, ui, label="Точное решение", linewidth=2, color="#3b82f6")
-        ax.plot(x, vi, label="RK4", linestyle="--", color="#f97316")
+        ax.plot(x, ui, label="u(x)", linewidth=2, color="#3b82f6")
+        ax.plot(x, vi, label="v(x)", linestyle="--", color="#f97316")
         ax.set_xlabel("x")
         ax.set_ylabel("u(x)")
         ax.set_title("Сравнение решения тестовой задачи")
