@@ -216,6 +216,8 @@ IntegrationResult integrateGeneric(const IntegrationContext& context, const Stat
     double h = settings.h0;
     int c1Total = 0;
     int c2Total = 0;
+    bool forcedBoundaryStep = false;
+    double bMinusXnBeforeBoundary = settings.b - settings.x0;
 
     result.summary.maxH = std::numeric_limits<double>::lowest();
     result.summary.minH = std::numeric_limits<double>::max();
@@ -247,6 +249,10 @@ IntegrationResult integrateGeneric(const IntegrationContext& context, const Stat
         }
         if (h <= 0.0) {
             break;
+        }
+        if (x + h > settings.b) {
+            forcedBoundaryStep = true;
+            bMinusXnBeforeBoundary = settings.b - x;
         }
         h = trimToBoundary(x, h, settings.b);
 
@@ -331,7 +337,7 @@ IntegrationResult integrateGeneric(const IntegrationContext& context, const Stat
     }
 
     result.summary.n = acceptedSteps;
-    result.summary.bMinusXn = settings.b - x;
+    result.summary.bMinusXn = forcedBoundaryStep ? bMinusXnBeforeBoundary : (settings.b - x);
     result.summary.totalDivisions = c1Total;
     result.summary.totalDoublings = c2Total;
 
