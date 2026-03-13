@@ -285,7 +285,7 @@ IntegrationResult integrateGeneric(const IntegrationContext& context, const Stat
                 }
 
                 nextH = stepUsed;
-                if (olp < doublingThreshold(settings.eps) && x + 2.0 * stepUsed <= settings.b) {
+                if (c1 == 0 && olp < doublingThreshold(settings.eps) && x + 2.0 * stepUsed <= settings.b) {
                     ++c2;
                     ++c2Total;
                     nextH = 2.0 * stepUsed;

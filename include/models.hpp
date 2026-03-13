@@ -18,7 +18,7 @@ struct TestProblemParams {
 };
 
 struct MainProblemParams {
-    double m = 0.01;
+    double m = 1.0;
     double c = 0.15;
     double k = 2.0;
     double kStar = 2.0;

@@ -572,13 +572,10 @@ class LabUI(tk.Tk):
         self._create_parameter_row(parent, "x0", self.x0_var, "b", self.b_var)
         self._create_parameter_row(parent, "h0", self.h0_var, "eps", self.eps_var)
 
-        row = ttk.Frame(parent, style="Card.TFrame")
-        row.pack(fill=tk.X, pady=(0, 8))
-        nmax_field = self._create_parameter_field(row, "nmax", self.nmax_var)
-        nmax_field.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
+        self._create_parameter_row(parent, "nmax", self.nmax_var)
 
-        adaptive_frame = ttk.Frame(row, style="Card.TFrame")
-        adaptive_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
+        adaptive_frame = ttk.Frame(parent, style="Card.TFrame")
+        adaptive_frame.pack(fill=tk.X, pady=(0, 8))
         ttk.Label(adaptive_frame, text="Адаптивный шаг", style="Field.TLabel").pack(anchor="w", pady=(0, 4))
         ttk.Checkbutton(adaptive_frame, text="Использовать контроль локальной погрешности", variable=self.adaptive_var, style="Card.TCheckbutton").pack(anchor="w")
 
