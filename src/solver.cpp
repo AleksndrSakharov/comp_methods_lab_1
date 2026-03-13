@@ -73,6 +73,15 @@ double maxAbsDiff(const State& a, const State& b) {
     return m;
 }
 
+bool isFiniteState(const State& s) {
+    for (double value : s) {
+        if (!std::isfinite(value)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 State vecDiff(const State& a, const State& b) {
     State out(a.size(), 0.0);
     for (size_t i = 0; i < a.size(); ++i) {
@@ -277,6 +286,14 @@ IntegrationResult integrateGeneric(const IntegrationContext& context, const Stat
                 yH2 = rk4Step(context.f, x + stepUsed / 2.0, half1, stepUsed / 2.0).yNext;
                 olp = estimateOLP(yH, yH2);
 
+                const bool badStep = !isFiniteState(yH) || !isFiniteState(yH2) || !std::isfinite(olp);
+                if (badStep && stepUsed > 1e-12) {
+                    h = trimToBoundary(x, stepUsed / 2.0, settings.b);
+                    ++c1;
+                    ++c1Total;
+                    continue;
+                }
+
                 if (olp > settings.eps && stepUsed > 1e-12) {
                     h = trimToBoundary(x, stepUsed / 2.0, settings.b);
                     ++c1;
@@ -292,6 +309,10 @@ IntegrationResult integrateGeneric(const IntegrationContext& context, const Stat
                 }
                 break;
             }
+        }
+
+        if (!isFiniteState(yH) || !isFiniteState(yH2) || !std::isfinite(olp)) {
+            break;
         }
 
         const double xNext = x + stepUsed;

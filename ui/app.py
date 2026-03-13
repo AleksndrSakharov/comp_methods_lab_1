@@ -583,7 +583,7 @@ class LabUI(tk.Tk):
         self._create_parameter_row(parent, "Вариант", self.variant_var, "u0", self.test_u0_var)
 
         self._create_section_title(parent, "Основная задача")
-        self._create_parameter_row(parent, "m", self.mass_var, "c", self.c_var)
+        self._create_parameter_row(parent, "m (Н·с²/см)", self.mass_var, "c", self.c_var)
         self._create_parameter_row(parent, "k", self.k_var, "k*", self.k_star_var)
         self._create_parameter_row(parent, "u0", self.main_u0_var, "u'0", self.du0_var)
 
